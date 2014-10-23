@@ -1,0 +1,140 @@
+#=================================================================================================#
+# PS1 (Prompt)
+#=================================================================================================#
+_git_status() {
+    local status=$(git status 2> /dev/null | tail -n1)
+    local color=$green
+    if ! echo $status | grep -q clean; then
+        if echo $status | grep -q untracked; then
+            color=$yellow
+        else
+            color=$red
+        fi 
+    fi
+    local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+    echo " ${color}git:$branch"
+}
+
+_svn_status () {
+    local color=$green
+    local url=`svn info | awk '/URL:/ {print $2}'`
+    local branch=
+    if [[ $url =~ trunk ]]; then
+        branch=$(echo trunk)
+    elif [[ $url =~ /branches/ ]]; then
+        branch=$(echo $url | sed -e 's#^.*/\(branches/.*\)/.*$#\1#')
+    elif [[ $url =~ /tags/ ]]; then
+        branch=$(echo $url | sed -e 's#^.*/\(tags/.*\)/.*$#\1#')
+    fi
+    echo " ${color}svn:$branch"
+}
+
+_hg_status() {
+    echo ""
+}
+
+_bzr_status() {
+    echo ""
+}
+
+_vcs_status() {
+    if [[ -d "$PWD/.git" ]]; then
+        echo "$(_git_status)"
+    elif [[ -d "$PWD/.svn" ]]; then
+        echo "$(_svn_status)"
+    elif [[ -d "$PWD/.hg" ]]; then
+        echo "$(_hg_status)"
+    elif [[ -d "$PWD/.bzr" ]]; then
+        echo "$(_bzr_status)"
+    fi
+}
+
+_ruby_version() {
+    if $(which -s rvm-prompt) && [[ $(rvm-prompt i) != "" ]]; then
+        local interpreter=$(rvm-prompt i)
+        local version=$(rvm-prompt v)
+        echo "  $red$interpreter:$bold_red$version"
+    elif $(which -s rbenv); then
+        local interpreter=""
+        local version=$(rbenv version | cut -d" " -f1)""
+        echo "  ${red}ruby:$bold_red$version"
+    fi
+}
+
+_python_loc() {
+    if [[ ! -z $VIRTUAL_ENV ]]; then
+        local location=`echo $VIRTUAL_ENV | sed "s,$HOME,~,"`
+        echo "  ${blue}python:$bold_yellow$location"
+    fi
+}
+
+_battery_warning() {
+    if $(which -s pmset); then
+        local batt_status=$(pmset -g batt | grep '%' |  cut -f2 -d$'\t')
+        local percent=$(echo $batt_status | cut -f1 -d';')
+        local percentN=$(echo $percent | tr -d '%')
+        local remaining=$(echo $batt_status | cut -f3 -d';')
+        if $(echo $batt_status | grep -q discharging) && [[ $percentN -lt 20 ]]; then
+            echo "${red}Battery is low ($percent).$remaining.\n"
+        fi    
+    fi
+}
+
+_left_prompt() {
+    echo "${white}┌─$blue \u ${white}──$cyan \h ${white}──$yellow \w ${white}──▪"
+}
+
+_right_prompt() {
+    echo "$(_vcs_status)$(_ruby_version)$(_python_loc)"
+}
+
+__prompt() {
+    local prevexit=$?
+    if [[ $prevexit -ne 0 ]]; then
+        local white="\[\e[0;31m\]"                        
+    else
+        local white="\[\e[0;37m\]"
+    fi
+    local resetcolor="\[\e[0m\]"
+    local black="\[\e[0;30m\]"    
+    local red="\[\e[0;31m\]"   
+    local green="\[\e[0;32m\]"   
+    local yellow="\[\e[0;33m\]"   
+    local blue="\[\e[0;34m\]"   
+    local magenta="\[\e[0;35m\]"   
+    local cyan="\[\e[0;36m\]"   
+    local bold_black="\[\e[1;30m\]"
+    local bold_red="\[\e[1;31m\]"
+    local bold_green="\[\e[1;32m\]"
+    local bold_yellow="\[\e[1;33m\]"
+    local bold_blue="\[\e[1;34m\]"
+    local bold_magenta="\[\e[1;35m\]"
+    local bold_cyan="\[\e[1;36m\]"
+    local bold_white="\[\e[1;37m\]"
+    
+    extraspaces=0
+    local left=$(_left_prompt)
+    local right=$(_right_prompt)
+    local prompt="$white\n└─▪ $resetcolor"
+    extraspaces=$(grep -o "\[" <<< $right | wc -l )
+    PS1=$(printf "%s%$(( COLUMNS+(extraspaces*6) ))s\r%s%s" "$(_battery_warning)" "${right}" "${left}" "${prompt}")
+}
+PROMPT_COMMAND='__prompt'
+
+#=================================================================================================#
+# Other stuff
+#=================================================================================================#
+# set up rbenv
+export RBENV_ROOT=/opt/rubies
+if which -s rbenv; then eval "$(rbenv init -)"; fi
+
+
+#=================================================================================================#
+# Aliases
+#=================================================================================================#
+# Some ls helpers enable color and long list
+alias ls="ls -G"
+alias ll="ls -lh"
+alias la="ls -lAh"
+# Make sure we dont accidentally delete files
+alias rm="rm -i"
